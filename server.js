@@ -367,40 +367,40 @@ app.delete(
 
 //    SERVER
 
-const PORT = process.env.PORT || 5174;
+// const PORT = process.env.PORT || 5174;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});const express =  require('express');
-const cors = require('cors');
-const mongoose = require('mongoose')
-require('dotenv').config();
+// app.listen(PORT, () => {
+//   console.log(`Server running on port ${PORT}`);
+// });const express =  require('express');
+// const cors = require('cors');
+// const mongoose = require('mongoose')
+// require('dotenv').config();
 
-const app = express();
-const Port = process.env.Port || 3000;
+// const app = express();
+// const Port = process.env.Port || 3000;
 
-app.use(cors());
-app.use(express.json());
+// app.use(cors());
+// app.use(express.json());
 
-// -------- MongoDB ------------
-const connectDB = async 
+// // -------- MongoDB ------------
+// const connectDB = async 
 
 
 //NISSI'S ENPOINTS
 
-const ticketSchema = new mongoose.Schema({
-  ticketID: { type: String, required: true },
-  user: { type: String, required: true },
-  details: { type: Object },
-  startDate: { type: String },
-  endDate: { type: String },
-  price: { type: String },
-  seatNo: { type: String },
-  tier: { type: String },
-  isExpired: { type: Boolean, default: false }
-});
+// const ticketSchema = new mongoose.Schema({
+//   ticketID: { type: String, required: true },
+//   user: { type: String, required: true },
+//   details: { type: Object },
+//   startDate: { type: String },
+//   endDate: { type: String },
+//   price: { type: String },
+//   seatNo: { type: String },
+//   tier: { type: String },
+//   isExpired: { type: Boolean, default: false }
+// });
 
-const Ticket = mongoose.model('Ticket', ticketSchema);
+// const Ticket = mongoose.model('Ticket', ticketSchema);
 
 
 //TICKETS
@@ -532,7 +532,7 @@ app.delete('/venues/:id', async (req, res) => {
 
 
 //PAYMENTS
-const mongoose = require('mongoose');
+// const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema({
     paymentID: { type: String, required: true, unique: true },
@@ -631,4 +631,13 @@ app.get('/payments/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: 'Server error retrieving payment' });
     }
+});
+
+
+
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
