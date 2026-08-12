@@ -54,6 +54,7 @@ const eventSchema = new mongoose.Schema(
     endTime: String,
     ticketPrice: Number,
     availableSeats: Number,
+    seatLayout: { type: Array, default: [] } 
   },
   { timestamps: true }
 );
@@ -61,7 +62,8 @@ const eventSchema = new mongoose.Schema(
 const bookingSchema = new mongoose.Schema(
   {
     customerId: mongoose.Schema.Types.ObjectId,
-    eventId: mongoose.Schema.Types.ObjectId,
+    // Add the ref property here:
+    eventId: { type: mongoose.Schema.Types.ObjectId, ref: "Event" }, 
     seats: [String],
     totalPrice: Number,
     paymentStatus: {
@@ -73,6 +75,7 @@ const bookingSchema = new mongoose.Schema(
 );
 
 
+
 const User = mongoose.model("User", userSchema);
 const Event = mongoose.model("Event", eventSchema);
 const Booking = mongoose.model("Booking", bookingSchema);
@@ -80,7 +83,7 @@ const Booking = mongoose.model("Booking", bookingSchema);
 
 const authenticate = (req, res, next) => {
   req.user = {
-    id: "123456789",
+    id: "507f1f77bcf86cd799439011",
     role: "Administrator",
   };
 
@@ -287,120 +290,353 @@ app.delete(
 );
 
 //    BOOKING ROUTES
-
-app.get("/api/bookings", authenticate, async (req, res) => {
+app.post("/api/bookings", authenticate, async (req, res) => {
   try {
-    const bookings = await Booking.find();
+    const { eventId, seats, customerId } = req.body;
 
-    res.json(bookings);
-  } catch (error) {
-    res.status(500).json({
-      message: error.message,
+    if (!seats || !Array.isArray(seats) || seats.length === 0) {
+      return res.status(400).json({ message: "Booking rejected: No seats specified." });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    const overlappingSeatsExist = await Booking.findOne({
+      eventId: eventId,
+      seats: { $in: seats } 
     });
+
+    if (overlappingSeatsExist) {
+      return res.status(409).json({
+        message: "Booking conflict: One or more selected seats are already reserved by another user."
+      });
+    }
+
+    const finalTotalPrice = seats.length * (event.ticketPrice || 0);
+
+    const confirmedBookingReceipt = await Booking.create({
+      customerId: customerId || req.user.id, 
+      eventId,
+      seats,
+      totalPrice: finalTotalPrice,
+      paymentStatus: "Confirmed"
+    });
+
+    if (event.availableSeats !== undefined) {
+      event.availableSeats = Math.max(0, event.availableSeats - seats.length);
+      await event.save();
+    }
+
+    res.status(201).json(confirmedBookingReceipt);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.post(
-  "/api/bookings",
-  authenticate,
-  authorize("Customer"),
-  async (req, res) => {
-    try {
-      const booking = await Booking.create(req.body);
 
-      res.status(201).json(booking);
-    } catch (error) {
-      res.status(500).json({
-        message: error.message,
-      });
-    }
-  }
-);
 
-app.put("/api/bookings/:id", authenticate, async (req, res) => {
+app.get("/api/bookings/history", authenticate, async (req, res) => {
   try {
-    const booking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+    const personalLogs = await Booking.find({ customerId: req.user.id })
+      .populate("eventId", "title date startTime endTime ticketPrice") 
+      .sort({ createdAt: -1 }); 
+
+    res.json(personalLogs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+//     Seat endpoints
+app.post("/api/seat/layouts", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId, seatLayout } = req.body;
+
+    if (!eventId || !seatLayout) {
+      return res.status(400).json({ message: "Missing eventId or seatLayout in request body." });
+    }
+    
+    const event = await Event.findByIdAndUpdate(
+      eventId, 
+      { seatLayout }, 
       { new: true }
     );
-
-    if (!booking) {
-      return res.status(404).json({
-        message: "Booking not found",
-      });
+    
+    if (!event) {
+      return res.status(404).json({ message: "Target event does not exist" });
     }
 
-    res.json(booking);
-  } catch (error) {
-    res.status(500).json({
-      message: error.message,
+    return res.status(201).json({
+      message: "Seat layout saved successfully",
+      seatLayout: event.seatLayout
     });
+
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 
-// Delete Booking
-app.delete(
-  "/api/bookings/:id",
-  authenticate,
-  authorize("Administrator"),
-  async (req, res) => {
-    try {
-      const booking = await Booking.findByIdAndDelete(req.params.id);
 
-      if (!booking) {
-        return res.status(404).json({
-          message: "Booking not found",
-        });
-      }
+app.get("/api/seat/layouts/:eventId", authenticate, async (req, res) => {
+  try {
+    const { eventId } = req.params;
 
-      res.json({
-        message: "Booking deleted",
-      });
-    } catch (error) {
-      res.status(500).json({
-        message: error.message,
-      });
-    }
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    res.json({ seatLayout: event.seatLayout || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-);
+}); 
 
-//    SERVER
+app.put("/api/seat/layouts/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { seatLayout } = req.body;
 
-// const PORT = process.env.PORT || 5174;
+    if (!seatLayout) {
+      return res.status(400).json({ message: "Missing seatLayout in request body." });
+    }
 
-// app.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
-// });const express =  require('express');
-// const cors = require('cors');
-// const mongoose = require('mongoose')
-// require('dotenv').config();
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
 
-// const app = express();
-// const Port = process.env.Port || 3000;
+    event.seatLayout = seatLayout;
+    await event.save(); 
+    
+    res.json({ message: "Seat layout updated successfully.", seatLayout: event.seatLayout });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } 
+});
 
-// app.use(cors());
-// app.use(express.json());
+app.delete("/api/seat/layouts/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
 
-// // -------- MongoDB ------------
-// const connectDB = async 
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    event.seatLayout = [];
+    await event.save(); 
+    
+    res.json({ message: "Seat layout deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } 
+});
+
+//      Sections
+app.post("/api/seat/sections", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId, sections } = req.body;
+
+    if (!eventId || !sections) {
+      return res.status(400).json({ message: "Missing eventId or sections in request body." });
+    }
+    
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    event.seatSections = sections;
+    await event.save();
+
+    res.json({ message: "Seat sections updated successfully.", seatSections: event.seatSections });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/seat/sections/:eventId", authenticate, async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    res.json({ seatSections: event.seatSections || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/seat/sections/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => { 
+  try {
+    const { eventId } = req.params;
+    const { sections } = req.body;
+
+    if (!sections) {
+      return res.status(400).json({ message: "Missing sections in request body." });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    event.seatSections = sections;
+    await event.save();
+
+    res.json({ message: "Seat sections updated successfully.", seatSections: event.seatSections });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/seat/sections/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    event.seatSections = [];
+    await event.save();
+
+    res.json({ message: "Seat sections deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Rows
+app.post("/api/seat/rows", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {     
+  try {
+    const { eventId, rows } = req.body;
+
+    if (!eventId || !rows) {
+      return res.status(400).json({ message: "Missing eventId or rows in request body." });
+    }
+    
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+
+    event.seatRows = rows;
+    await event.save();
+
+    res.json({ message: "Seat rows updated successfully.", seatRows: event.seatRows }); 
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/seat/rows/:eventId", authenticate, async (req, res) => {  
+  try {
+    const { eventId } = req.params; 
+
+    if (!eventId) {
+      return res.status(400).json({ message: "Missing eventId in request parameters." });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return    
+  res.status(404).json({ message: "Target event does not exist" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/seat/rows/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { rows } = req.body;  
 
 
-//NISSI'S ENPOINTS
+    if (!rows) {  
+      return res.status(400).json({ message: "Missing rows in request body." });  
+    }
 
-// const ticketSchema = new mongoose.Schema({
-//   ticketID: { type: String, required: true },
-//   user: { type: String, required: true },
-//   details: { type: Object },
-//   startDate: { type: String },
-//   endDate: { type: String },
-//   price: { type: String },
-//   seatNo: { type: String },
-//   tier: { type: String },
-//   isExpired: { type: Boolean, default: false }
-// });
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });  
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
 
-// const Ticket = mongoose.model('Ticket', ticketSchema);
+app.delete("/api/seat/rows/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params; 
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });  
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//  Seats
+app.post("/api/seat/seats", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {  
+  try { 
+    const { eventId, seats } = req.body;
+
+    if (!eventId || !seats) {  
+      return res.status(400).json({ message: "Missing eventId or seats in request body." });  
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/seat/seats/:eventId", authenticate, async (req, res) => {
+  try {
+    const { eventId } = req.params; 
+
+    const event = await Event.findById(eventId);  
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/seat/seats/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { seats } = req.body;
+
+    if (!seats) {  
+      return res.status(400).json({ message: "Missing seats in request body." });  
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/seat/seats/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Target event does not exist" });
+  }catch (error) {  
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+// NISSI'S ENPOINTS
+
+const ticketSchema = new mongoose.Schema({
+  ticketID: { type: String, required: true },
+  user: { type: String, required: true },
+  details: { type: Object },
+  startDate: { type: String },
+  endDate: { type: String },
+  price: { type: String },
+  seatNo: { type: String },
+  tier: { type: String },
+  isExpired: { type: Boolean, default: false }
+});
+
+const Ticket = mongoose.model('Ticket', ticketSchema);
 
 
 //TICKETS
