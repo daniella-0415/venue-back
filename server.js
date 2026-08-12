@@ -9,6 +9,12 @@ const cors = require("cors");
 
 const app = express();
 
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 app.use(cors());
 app.use(express.json());
 
@@ -66,6 +72,9 @@ const venueSchema = new mongoose.Schema(
   {
     venueName: { type: String, required: true },
     description: { type: String },
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
     address: { type: String, required: true },
     capacity: { type: Number, required: true },
     numberOfRows: { type: Number, required: true },
@@ -205,6 +214,9 @@ app.post("/api/register", async (req, res) => {
       message: error.message,
     });
   }
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 });
 
 
@@ -233,6 +245,12 @@ app.put("/api/profile/:id", authenticate, async (req, res) => {
     const updated = await User.findByIdAndUpdate(
       req.params.id,
       req.body,
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
       { new: true }
     );
 
@@ -261,6 +279,9 @@ app.get("/api/events", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 
 app.get("/api/events/:id", async (req, res) => {
   try {
@@ -343,6 +364,12 @@ app.get("/api/bookings", authenticate, async (req, res) => {
       message: error.message,
     });
   }
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 });
 
 app.post(
@@ -409,6 +436,9 @@ app.delete(
   }
 );
 
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 
 
 
@@ -429,7 +459,13 @@ app.get('/tickets', async (req, res) => {
 
 app.get('/tickets/:id', async (req, res) => {
   try {
-    const ticket = await Ticket.findById(req.params.id);
+    const ticket = await Ticket.fi
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+ndById(req.params.id);
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
     res.status(200).json(ticket);
   } catch (err) {
@@ -472,7 +508,10 @@ app.delete('/tickets', async (req, res) => {
     await Ticket.deleteMany({});
     res.status(200).json({ message: 'All tickets deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+err.message });
   }
 });
 
@@ -530,6 +569,9 @@ app.put(
         req.body,
         { new: true }
       );
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
       if (!updatedVenue) return res.status(404).json({ message: "Venue not found" });
       res.status(200).json(updatedVenue);
     } catch (err) {
@@ -561,6 +603,9 @@ app.delete(
 
 
 //PAYMENTS APIs
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 
 app.post('/payments', async (req, res) => {
     try {
@@ -581,7 +626,7 @@ app.post('/payments', async (req, res) => {
 
         const data = await response.json();
         
-        if (!data.status) {
+        if express(!data.status) {
             return res.status(400).json({ error: data.message });
         }
 
@@ -596,7 +641,7 @@ app.post('/payments', async (req, res) => {
         });
 
         await newPayment.save();
-
+express
         return res.status(201).json({
             status: 'success',
             authorization_url: data.data.authorization_url,
@@ -607,6 +652,9 @@ app.post('/payments', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Server error initializing payment' });
     }
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 });
 
 app.get('/payments', async (req, res) => {
@@ -634,6 +682,9 @@ app.get('/payments/:id', async (req, res) => {
                 Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
             },
         });
+...
+Can’t automatically merge. Don’t worry, you can still create the pull request.
+
 
         const verifyData = await paystackVerify.json();
 
