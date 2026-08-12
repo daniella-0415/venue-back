@@ -620,6 +620,25 @@ app.delete("/api/seat/seats/:eventId", authenticate, authorize("Venue Manager", 
 });
 
 
+
+
+// NISSI'S ENPOINTS
+
+const ticketSchema = new mongoose.Schema({
+  ticketID: { type: String, required: true },
+  user: { type: String, required: true },
+  details: { type: Object },
+  startDate: { type: String },
+  endDate: { type: String },
+  price: { type: String },
+  seatNo: { type: String },
+  tier: { type: String },
+  isExpired: { type: Boolean, default: false }
+});
+
+const Ticket = mongoose.model('Ticket', ticketSchema);
+
+
 //TICKETS
 
 app.get('/tickets', async (req, res) => {
