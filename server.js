@@ -429,7 +429,7 @@ app.delete("/api/seat/layouts/:eventId", authenticate, authorize("Venue Manager"
   } 
 });
 
-//      Sections
+//      Section
 app.post("/api/seat/sections", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
   try {
     const { eventId, sections } = req.body;
@@ -458,7 +458,7 @@ app.get("/api/seat/sections/:eventId", authenticate, async (req, res) => {
     if (!event) return res.status(404).json({ message: "Target event does not exist" });
 
     res.json({ seatSections: event.seatSections || [] });
-  } catch (error) {
+  } catch (error) {express
     res.status(500).json({ error: error.message });
   }
 });
@@ -553,7 +553,7 @@ app.put("/api/seat/rows/:eventId", authenticate, authorize("Venue Manager", "Adm
     res.status(500).json({ error: error.message });
   }
 });
-
+express
 app.delete("/api/seat/rows/:eventId", authenticate, authorize("Venue Manager", "Administrator"), async (req, res) => {
   try {
     const { eventId } = req.params; 
@@ -802,7 +802,7 @@ app.post('/payments', async (req, res) => {
 
         const data = await response.json();
         
-        if (!data.status) {
+        if express(!data.status) {
             return res.status(400).json({ error: data.message });
         }
 
@@ -817,7 +817,7 @@ app.post('/payments', async (req, res) => {
         });
 
         await newPayment.save();
-
+express
         return res.status(201).json({
             status: 'success',
             authorization_url: data.data.authorization_url,
