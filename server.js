@@ -14,6 +14,10 @@ app.use(express.json());
 
 
 
+
+
+
+//MONGODB SCHEMAS
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log(" MongoDB Connected"))
@@ -42,18 +46,31 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
-
 const eventSchema = new mongoose.Schema(
   {
-    venueId: mongoose.Schema.Types.ObjectId,
-    title: String,
+    venueId: { type: mongoose.Schema.Types.ObjectId, ref: "Venue", required: true },
+    title: { type: String, required: true },
     description: String,
     date: Date,
     startTime: String,
     endTime: String,
+    ticketSalesClosingDate: Date,
+    image: String,
     ticketPrice: Number,
     availableSeats: Number,
+  },
+  { timestamps: true }
+);
+
+const venueSchema = new mongoose.Schema(
+  {
+    venueName: { type: String, required: true },
+    description: { type: String },
+    address: { type: String, required: true },
+    capacity: { type: Number, required: true },
+    numberOfRows: { type: Number, required: true },
+    seatsPerRow: { type: Number, required: true },
+    isAvailable: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
@@ -72,12 +89,44 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const ticketSchema = new mongoose.Schema({
+  ticketID: { type: String, required: true },
+  user: { type: String, required: true },
+  details: { type: Object },
+  startDate: { type: String },
+  endDate: { type: String },
+  price: { type: String },
+  seatNo: { type: String },
+  tier: { type: String },
+  isExpired: { type: Boolean, default: false }
+});
 
+
+const paymentSchema = new mongoose.Schema({
+    paymentID: { type: String, required: true, unique: true },
+    bookingID: { type: String, required: true },
+    amount: { type: String, required: true },
+    method: { type: String, default: 'PayStack' },
+    status: { type: String, default: 'pending' },
+    timeStamp: { type: Date, default: Date.now },
+    isExpired: { type: Boolean, default: false }
+});
+
+const Payment = mongoose.model('Payment', paymentSchema);
 const User = mongoose.model("User", userSchema);
 const Event = mongoose.model("Event", eventSchema);
+const Venue = mongoose.model("Venue", venueSchema);
 const Booking = mongoose.model("Booking", bookingSchema);
+const Ticket = mongoose.model('Ticket', ticketSchema);
 
 
+
+
+
+
+
+
+//AUTHENTICATION
 const authenticate = (req, res, next) => {
   req.user = {
     id: "123456789",
@@ -86,8 +135,6 @@ const authenticate = (req, res, next) => {
 
   next();
 };
-
-
 
 const authorize = (...roles) => {
   return (req, res, next) => {
@@ -101,7 +148,13 @@ const authorize = (...roles) => {
   };
 };
 
-//    Home Route
+
+
+
+
+
+
+//   DUMMY HOME API
 
 app.get("/", (req, res) => {
   res.json({
@@ -110,7 +163,13 @@ app.get("/", (req, res) => {
 });
 
 
-//    USER ROUTES
+
+
+
+
+
+
+//    USERS APIs
 
 app.get("/api/users", authenticate, authorize("Administrator"), async (req, res) => {
   try {
@@ -188,7 +247,11 @@ app.put("/api/profile/:id", authenticate, async (req, res) => {
 
 
 
-//    EVENT ROUTES
+
+
+
+
+//    EVENT APIs
 
 app.get("/api/events", async (req, res) => {
   try {
@@ -199,21 +262,24 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
+app.get("/api/events", async (req, res) => {
+  try {
+    const events = await Event.find().populate("venueId");
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 app.get("/api/events/:id", async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id);
-
+    const event = await Event.findById(req.params.id).populate("venueId");
     if (!event) {
-      return res.status(404).json({
-        message: "Event not found",
-      });
+      return res.status(404).json({ message: "Event not found" });
     }
-
     res.json(event);
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -224,12 +290,9 @@ app.post(
   async (req, res) => {
     try {
       const event = await Event.create(req.body);
-
       res.status(201).json(event);
     } catch (error) {
-      res.status(500).json({
-        message: error.message,
-      });
+      res.status(500).json({ message: error.message });
     }
   }
 );
@@ -240,23 +303,15 @@ app.put(
   authorize("Venue Manager", "Administrator"),
   async (req, res) => {
     try {
-      const event = await Event.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true }
-      );
-
+      const event = await Event.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+      });
       if (!event) {
-        return res.status(404).json({
-          message: "Event not found",
-        });
+        return res.status(404).json({ message: "Event not found" });
       }
-
       res.json(event);
     } catch (error) {
-      res.status(500).json({
-        message: error.message,
-      });
+      res.status(500).json({ message: error.message });
     }
   }
 );
@@ -268,25 +323,24 @@ app.delete(
   async (req, res) => {
     try {
       const event = await Event.findByIdAndDelete(req.params.id);
-
       if (!event) {
-        return res.status(404).json({
-          message: "Event not found",
-        });
+        return res.status(404).json({ message: "Event not found" });
       }
-
-      res.json({
-        message: "Event deleted successfully",
-      });
+      res.json({ message: "Event deleted successfully" });
     } catch (error) {
-      res.status(500).json({
-        message: error.message,
-      });
+      res.status(500).json({ message: error.message });
     }
   }
 );
 
-//    BOOKING ROUTES
+
+
+
+
+
+
+
+//    BOOKING APIs
 
 app.get("/api/bookings", authenticate, async (req, res) => {
   try {
@@ -339,7 +393,6 @@ app.put("/api/bookings/:id", authenticate, async (req, res) => {
   }
 });
 
-// Delete Booking
 app.delete(
   "/api/bookings/:id",
   authenticate,
@@ -365,45 +418,14 @@ app.delete(
   }
 );
 
-//    SERVER
-
-// const PORT = process.env.PORT || 5174;
-
-// app.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
-// });const express =  require('express');
-// const cors = require('cors');
-// const mongoose = require('mongoose')
-// require('dotenv').config();
-
-// const app = express();
-// const Port = process.env.Port || 3000;
-
-// app.use(cors());
-// app.use(express.json());
-
-// // -------- MongoDB ------------
-// const connectDB = async 
 
 
-//NISSI'S ENPOINTS
-
-// const ticketSchema = new mongoose.Schema({
-//   ticketID: { type: String, required: true },
-//   user: { type: String, required: true },
-//   details: { type: Object },
-//   startDate: { type: String },
-//   endDate: { type: String },
-//   price: { type: String },
-//   seatNo: { type: String },
-//   tier: { type: String },
-//   isExpired: { type: Boolean, default: false }
-// });
-
-// const Ticket = mongoose.model('Ticket', ticketSchema);
 
 
-//TICKETS
+
+
+
+//TICKETS APIs
 
 app.get('/tickets', async (req, res) => {
   try {
@@ -463,25 +485,16 @@ app.delete('/tickets', async (req, res) => {
   }
 });
 
-//VENUES
-
-const venueSchema = new mongoose.Schema({
-  venueName: { type: String, required: true },
-  venueID: { type: String, required: true },
-  description: { type: String },
-  location: { type: String },
-  category: { type: String },
-  prices: { type: Object },
-  isAvailable: { type: Boolean, default: true },
-  owner: { type: Object }
-});
-
-const Venue = mongoose.model('Venue', venueSchema);
 
 
 
 
-app.get('/venues', async (req, res) => {
+
+
+
+//VENUES APIs
+
+app.get("/api/venues", async (req, res) => {
   try {
     const venues = await Venue.find();
     res.status(200).json(venues);
@@ -490,62 +503,73 @@ app.get('/venues', async (req, res) => {
   }
 });
 
-app.get('/venues/:id', async (req, res) => {
+app.get("/api/venues/:id", async (req, res) => {
   try {
     const venue = await Venue.findById(req.params.id);
-    if (!venue) return res.status(404).json({ message: 'Venue not found' });
+    if (!venue) return res.status(404).json({ message: "Venue not found" });
     res.status(200).json(venue);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/venues', async (req, res) => {
-  try {
-    const newVenue = new Venue(req.body);
-    const savedVenue = await newVenue.save();
-    res.status(201).json(savedVenue);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.post(
+  "/api/venues",
+  authenticate,
+  authorize("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      const newVenue = new Venue(req.body);
+      const savedVenue = await newVenue.save();
+      res.status(201).json(savedVenue);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
   }
-});
+);
 
-app.put('/venues/:id', async (req, res) => {
-  try {
-    const updatedVenue = await Venue.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedVenue) return res.status(404).json({ message: 'Venue not found' });
-    res.status(200).json(updatedVenue);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.put(
+  "/api/venues/:id",
+  authenticate,
+  authorize("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      const updatedVenue = await Venue.findByIdAndUpdate(
+        req.params.id,
+        req.body,
+        { new: true }
+      );
+      if (!updatedVenue) return res.status(404).json({ message: "Venue not found" });
+      res.status(200).json(updatedVenue);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
   }
-});
+);
 
-app.delete('/venues/:id', async (req, res) => {
-  try {
-    const deletedVenue = await Venue.findByIdAndDelete(req.params.id);
-    if (!deletedVenue) return res.status(404).json({ message: 'Venue not found' });
-    res.status(200).json({ message: 'Venue deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+app.delete(
+  "/api/venues/:id",
+  authenticate,
+  authorize("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      const deletedVenue = await Venue.findByIdAndDelete(req.params.id);
+      if (!deletedVenue) return res.status(404).json({ message: "Venue not found" });
+      res.status(200).json({ message: "Venue deleted successfully" });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
-});
+);
 
 
-//PAYMENTS
-// const mongoose = require('mongoose');
 
-const paymentSchema = new mongoose.Schema({
-    paymentID: { type: String, required: true, unique: true },
-    bookingID: { type: String, required: true },
-    amount: { type: String, required: true },
-    method: { type: String, default: 'PayStack' },
-    status: { type: String, default: 'pending' },
-    timeStamp: { type: Date, default: Date.now },
-    isExpired: { type: Boolean, default: false }
-});
 
-const Payment = mongoose.model('Payment', paymentSchema);
 
+
+
+
+//PAYMENTS APIs
 
 app.post('/payments', async (req, res) => {
     try {
@@ -632,6 +656,10 @@ app.get('/payments/:id', async (req, res) => {
         res.status(500).json({ error: 'Server error retrieving payment' });
     }
 });
+
+
+
+
 
 
 
