@@ -10,21 +10,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* =========================================================
-   CONFIGURATION
-========================================================= */
+  //  CONFIGURATION
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-  console.error("❌ MONGO_URI is missing from .env");
+  console.error(" MONGO_URI is missing from .env");
   process.exit(1);
 }
 
-/* =========================================================
-   MONGODB
-========================================================= */
+  //  MONGODB
 
 mongoose
   .connect(MONGO_URI)
@@ -34,9 +30,7 @@ mongoose
     process.exit(1);
   });
 
-/* =========================================================
-   HELPER FUNCTIONS
-========================================================= */
+  //  HELPER FUNCTIONS
 
 function generateBookingReference() {
   return `VF-${Date.now()}-${crypto
@@ -63,9 +57,7 @@ function isValidDate(value) {
   return !Number.isNaN(new Date(value).getTime());
 }
 
-/* =========================================================
-   USER MODEL
-========================================================= */
+  //  USER MODEL
 
 const userSchema = new mongoose.Schema(
   {
@@ -107,9 +99,7 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", userSchema);
 
-/* =========================================================
-   VENUE MODEL
-========================================================= */
+  //  VENUE MODEL
 
 const venueSchema = new mongoose.Schema(
   {
@@ -167,11 +157,9 @@ const venueSchema = new mongoose.Schema(
   }
 );
 
-/*
-  Capacity is automatically calculated from:
 
-  rows × seatsPerRow
-*/
+  // rows × seatsPerRow
+
 
 venueSchema.pre("validate", function () {
   if (this.rows && this.seatsPerRow) {
@@ -181,9 +169,7 @@ venueSchema.pre("validate", function () {
 
 const Venue = mongoose.model("Venue", venueSchema);
 
-/* =========================================================
-   EVENT MODEL
-========================================================= */
+  //  EVENT MODEL
 
 const eventSchema = new mongoose.Schema(
   {
@@ -246,9 +232,7 @@ const eventSchema = new mongoose.Schema(
 
 const Event = mongoose.model("Event", eventSchema);
 
-/* =========================================================
-   BOOKING MODEL
-========================================================= */
+  //  BOOKING MODEL
 
 const bookingSchema = new mongoose.Schema(
   {
@@ -324,9 +308,7 @@ const Booking = mongoose.model(
   bookingSchema
 );
 
-/* =========================================================
-   PAYMENT MODEL
-========================================================= */
+  //  PAYMENT MODEL
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -369,9 +351,7 @@ const Payment = mongoose.model(
   paymentSchema
 );
 
-/* =========================================================
-   TEMPORARY AUTHENTICATION
-========================================================= */
+  //  TEMPORARY AUTHENTICATION
 
 
 async function authenticateUser(req, res, next) {
@@ -421,9 +401,7 @@ async function authenticateUser(req, res, next) {
 }
 
 
-/* =========================================================
-   ROLE AUTHORIZATION
-========================================================= */
+  //  ROLE AUTHORIZATION
 
 function authorizeRoles(...allowedRoles) {
   return (req, res, next) => {
@@ -444,9 +422,7 @@ function authorizeRoles(...allowedRoles) {
 }
 
 
-/* =========================================================
-   BASIC TEST ROUTE
-========================================================= */
+  //  BASIC TEST ROUTE
 
 app.get("/", (req, res) => {
   res.json({
@@ -455,9 +431,7 @@ app.get("/", (req, res) => {
 });
 
 
-/* =========================================================
-   USER REGISTRATION
-========================================================= */
+  //  USER REGISTRATION
 
 
 
@@ -524,9 +498,52 @@ app.post("/api/users/register", async (req, res) => {
 });
 
 
-/* =========================================================
-   GET ALL USERS
-========================================================= */
+
+//  USER LOGIN
+
+app.post("/api/login", async (req, res) => {
+  try {
+    const { idToken, email } = req.body;
+
+    if (!idToken || !email) {
+      return res.status(400).json({
+        message: "idToken and email are required",
+      });
+    }
+
+    // Find the user in MongoDB using their email
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    }).select("-__v");
+
+    if (!user) {
+      return res.status(404).json({
+        message:
+          "User account not found. Please register first.",
+      });
+    }
+
+    res.json({
+      message: "Login successful",
+      user: {
+        id: user._id,
+        firebaseUID: user.firebaseUID,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+  } catch (error) {
+    console.error("Login error:", error);
+
+    res.status(500).json({
+      message: "Failed to log in",
+      error: error.message,
+    });
+  }
+});
+  //  GET ALL USERS
 
 app.get(
   "/api/users",
@@ -549,9 +566,7 @@ app.get(
 );
 
 
-/* =========================================================
-   GET CURRENT USER PROFILE
-========================================================= */
+  //  GET CURRENT USER PROFILE
 
 app.get(
   "/api/users/profile",
@@ -572,9 +587,7 @@ app.get(
 );
 
 
-/* =========================================================
-   UPDATE CURRENT USER PROFILE
-========================================================= */
+  //  UPDATE CURRENT USER PROFILE
 
 app.put(
   "/api/users/profile",
@@ -610,11 +623,7 @@ app.put(
           .toLowerCase();
       }
 
-      /*
-        Users cannot change their own role.
-        Role changes should be handled by an
-        Administrator.
-      */
+    
 
       const updatedUser =
         await User.findByIdAndUpdate(
@@ -643,9 +652,7 @@ app.put(
 );
 
 
-/* =========================================================
-   ADMIN — UPDATE USER ROLE
-========================================================= */
+  //  ADMIN — UPDATE USER ROLE
 
 app.put(
   "/api/users/:id/role",
@@ -705,9 +712,7 @@ app.put(
 );
 
 
-/* =========================================================
-   VENUE — CREATE
-========================================================= */
+  //  VENUE — CREATE
 
 app.post(
   "/api/venues",
@@ -793,9 +798,7 @@ app.post(
 );
 
 
-/* =========================================================
-   VENUE — GET ALL
-========================================================= */
+  //  VENUE  GET ALL
 
 app.get(
   "/api/venues",
@@ -819,9 +822,7 @@ app.get(
 );
 
 
-/* =========================================================
-   VENUE — GET ONE
-========================================================= */
+  //  VENUE  GET ONE
 
 app.get(
   "/api/venues/:id",
@@ -861,9 +862,7 @@ app.get(
 );
 
 
-/* =========================================================
-   VENUE — UPDATE
-========================================================= */
+  //  VENUE  UPDATE
 
 app.put(
   "/api/venues/:id",
@@ -895,10 +894,7 @@ app.put(
         });
       }
 
-      /*
-        Venue Managers can only update
-        venues that belong to them.
-      */
+     
 
       if (
         req.user.role === "Venue Manager" &&
@@ -989,9 +985,7 @@ app.put(
 );
 
 
-/* =========================================================
-   VENUE — DELETE
-========================================================= */
+  //  VENUE — DELETE
 
 app.delete(
   "/api/venues/:id",
@@ -1023,10 +1017,7 @@ app.delete(
         });
       }
 
-      /*
-        Venue Managers cannot delete another
-        manager's venue.
-      */
+   
 
       if (
         req.user.role === "Venue Manager" &&
@@ -1040,10 +1031,7 @@ app.delete(
         });
       }
 
-      /*
-        Don't allow deletion if the venue
-        is being used by an event.
-      */
+     
 
       const eventUsingVenue =
         await Event.findOne({
@@ -1075,9 +1063,7 @@ app.delete(
   }
 );
 
-/* =========================================================
-   EVENT — CREATE
-========================================================= */
+  //  EVENT  CREATE
 
 app.post(
   "/api/events",
@@ -1099,9 +1085,7 @@ app.post(
         ticketPrice,
       } = req.body;
 
-      /* -----------------------------------------------------
-         REQUIRED FIELDS
-      ----------------------------------------------------- */
+        //  REQUIRED FIELDS
 
       if (
         !title ||
@@ -1117,9 +1101,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         VALIDATE VENUE ID
-      ----------------------------------------------------- */
+        //  VALIDATE VENUE ID
 
       if (!mongoose.Types.ObjectId.isValid(venueId)) {
         return res.status(400).json({
@@ -1135,9 +1117,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         VENUE MANAGER OWNERSHIP
-      ----------------------------------------------------- */
+        //  VENUE MANAGER OWNERSHIP
 
       if (
         req.user.role === "Venue Manager" &&
@@ -1151,9 +1131,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         VALIDATE DATES
-      ----------------------------------------------------- */
+        //  VALIDATE DATES
 
       if (!isValidDate(date)) {
         return res.status(400).json({
@@ -1179,9 +1157,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         VALIDATE PRICE
-      ----------------------------------------------------- */
+        //  VALIDATE PRICE
 
       const parsedPrice = Number(ticketPrice);
 
@@ -1195,9 +1171,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CREATE EVENT
-      ----------------------------------------------------- */
+        //  CREATE EVENT
 
       const event = await Event.create({
         title: title.trim(),
@@ -1237,9 +1211,7 @@ app.post(
 );
 
 
-/* =========================================================
-   EVENT — GET ALL
-========================================================= */
+  //  EVENT — GET ALL
 
 app.get(
   "/api/events",
@@ -1271,9 +1243,7 @@ app.get(
 );
 
 
-/* =========================================================
-   EVENT — GET ONE
-========================================================= */
+  //  EVENT — GET ONE
 
 app.get(
   "/api/events/:id",
@@ -1321,9 +1291,7 @@ app.get(
 );
 
 
-/* =========================================================
-   EVENT — UPDATE
-========================================================= */
+  //  EVENT  UPDATE
 
 app.put(
   "/api/events/:id",
@@ -1355,9 +1323,7 @@ app.put(
         });
       }
 
-      /* -----------------------------------------------------
-         FIND THE EVENT VENUE
-      ----------------------------------------------------- */
+        //  FIND THE EVENT VENUE
 
       const venue =
         await Venue.findById(
@@ -1371,9 +1337,7 @@ app.put(
         });
       }
 
-      /* -----------------------------------------------------
-         VENUE MANAGER OWNERSHIP
-      ----------------------------------------------------- */
+        //  VENUE MANAGER OWNERSHIP
 
       if (
         req.user.role === "Venue Manager" &&
@@ -1398,9 +1362,7 @@ app.put(
         ticketPrice,
       } = req.body;
 
-      /* -----------------------------------------------------
-         UPDATE VENUE
-      ----------------------------------------------------- */
+        //  UPDATE VENUE
 
       if (venueId !== undefined) {
         if (
@@ -1439,9 +1401,7 @@ app.put(
         event.venueId = venueId;
       }
 
-      /* -----------------------------------------------------
-         UPDATE BASIC INFORMATION
-      ----------------------------------------------------- */
+        //  UPDATE BASIC INFORMATION
 
       if (title !== undefined) {
         if (!title.trim()) {
@@ -1474,9 +1434,7 @@ app.put(
         event.image = image;
       }
 
-      /* -----------------------------------------------------
-         UPDATE EVENT DATE
-      ----------------------------------------------------- */
+        //  UPDATE EVENT DATE
 
       if (date !== undefined) {
         if (!isValidDate(date)) {
@@ -1489,9 +1447,7 @@ app.put(
         event.date = new Date(date);
       }
 
-      /* -----------------------------------------------------
-         UPDATE SALES CLOSING DATE
-      ----------------------------------------------------- */
+        //  UPDATE SALES CLOSING DATE
 
       if (
         salesClosingDate !==
@@ -1514,9 +1470,7 @@ app.put(
           );
       }
 
-      /* -----------------------------------------------------
-         MAKE SURE SALES CLOSES BEFORE EVENT
-      ----------------------------------------------------- */
+        //  MAKE SURE SALES CLOSES BEFORE EVENT
 
       if (
         event.salesClosingDate >=
@@ -1528,9 +1482,7 @@ app.put(
         });
       }
 
-      /* -----------------------------------------------------
-         UPDATE PRICE
-      ----------------------------------------------------- */
+        //  UPDATE PRICE
 
       if (
         ticketPrice !==
@@ -1586,9 +1538,7 @@ app.put(
 );
 
 
-/* =========================================================
-   EVENT — DELETE
-========================================================= */
+  //  EVENT — DELETE
 
 app.delete(
   "/api/events/:id",
@@ -1638,9 +1588,7 @@ app.delete(
         });
       }
 
-      /* -----------------------------------------------------
-         DON'T DELETE EVENTS WITH BOOKINGS
-      ----------------------------------------------------- */
+        //  DON'T DELETE EVENTS WITH BOOKINGS 
 
       const existingBooking =
         await Booking.findOne({
@@ -1678,20 +1626,14 @@ app.delete(
 );
 
 
-/* =========================================================
-   DYNAMIC SEAT GENERATION
-========================================================= */
-
-
+  //   SEAT GENERATION
 
 
 app.get(
   "/api/events/:id/seats",
   async (req, res) => {
     try {
-      /* -----------------------------------------------------
-         VALIDATE EVENT ID
-      ----------------------------------------------------- */
+        //  VALIDATE EVENT ID
 
       if (
         !mongoose.Types.ObjectId.isValid(
@@ -1703,9 +1645,7 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         FIND EVENT
-      ----------------------------------------------------- */
+        //  FIND EVENT
 
       const event =
         await Event.findById(
@@ -1718,9 +1658,8 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         FIND VENUE
-      ----------------------------------------------------- */
+        //  FIND VENUE
+       
 
       const venue =
         await Venue.findById(
@@ -1734,9 +1673,7 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         GENERATE ALL SEATS
-      ----------------------------------------------------- */
+        //  GENERATE ALL SEATS
 
       const allSeats =
         generateSeats(
@@ -1744,11 +1681,7 @@ app.get(
           venue.seatsPerRow
         );
 
-      /* -----------------------------------------------------
-         FIND ALL ACTIVE BOOKINGS
-         FOR THIS EVENT
-      ----------------------------------------------------- */
-
+    
       const bookings =
         await Booking.find({
           eventId: event._id,
@@ -1757,9 +1690,6 @@ app.get(
           },
         }).select("seats");
 
-      /* -----------------------------------------------------
-         CREATE SET OF BOOKED SEATS
-      ----------------------------------------------------- */
 
       const bookedSeats =
         new Set();
@@ -1776,9 +1706,6 @@ app.get(
         }
       );
 
-      /* -----------------------------------------------------
-         CREATE SEAT RESPONSE
-      ----------------------------------------------------- */
 
       const seats =
         allSeats.map(
@@ -1795,9 +1722,7 @@ app.get(
           })
         );
 
-      /* -----------------------------------------------------
-         RESPONSE
-      ----------------------------------------------------- */
+        //  RESPONSE
 
       res.json({
         event: {
@@ -1842,9 +1767,7 @@ app.get(
 );
 
 
-/* =========================================================
-   GET AVAILABLE SEATS ONLY
-========================================================= */
+  //  GET AVAILABLE SEATS ONLY
 
 app.get(
   "/api/events/:id/seats/available",
@@ -1942,9 +1865,7 @@ app.get(
   }
 );
 
-/* =========================================================
-   BOOKING — CREATE
-========================================================= */
+  //  BOOKING 
 
 
   
@@ -1959,9 +1880,6 @@ app.post(
         seats,
       } = req.body;
 
-      /* -----------------------------------------------------
-         REQUIRED DATA
-      ----------------------------------------------------- */
 
       if (!eventId || !seats) {
         return res.status(400).json({
@@ -1984,9 +1902,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         LIMIT NUMBER OF SEATS
-      ----------------------------------------------------- */
+        //  LIMIT NUMBER OF SEATS
 
       if (seats.length > 20) {
         return res.status(400).json({
@@ -1994,10 +1910,6 @@ app.post(
             "You cannot book more than 20 seats at once",
         });
       }
-
-      /* -----------------------------------------------------
-         VALIDATE EVENT ID
-      ----------------------------------------------------- */
 
       if (
         !mongoose.Types.ObjectId.isValid(
@@ -2009,9 +1921,6 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         FIND EVENT
-      ----------------------------------------------------- */
 
       const event =
         await Event.findById(
@@ -2024,9 +1933,6 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CHECK SALES CLOSING DATE
-      ----------------------------------------------------- */
 
       const now = new Date();
 
@@ -2042,9 +1948,6 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         FIND VENUE
-      ----------------------------------------------------- */
 
       const venue =
         await Venue.findById(
@@ -2058,9 +1961,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         NORMALIZE SEAT NUMBERS
-      ----------------------------------------------------- */
+        //  NORMALIZE SEAT NUMBERS
 
       const normalizedSeats =
         seats.map((seat) =>
@@ -2069,10 +1970,8 @@ app.post(
             .toUpperCase()
         );
 
-      /* -----------------------------------------------------
-         REMOVE DUPLICATE SEATS FROM
-         THE SAME REQUEST
-      ----------------------------------------------------- */
+        //  REMOVE DUPLICATE SEATS FROM
+        //  THE SAME REQUEST
 
       const uniqueSeats =
         [...new Set(
@@ -2089,9 +1988,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         GENERATE VALID VENUE SEATS
-      ----------------------------------------------------- */
+        //  GENERATE VALID VENUE SEATS
 
       const validSeats =
         generateSeats(
@@ -2102,10 +1999,8 @@ app.post(
       const validSeatSet =
         new Set(validSeats);
 
-      /* -----------------------------------------------------
-         CHECK THAT ALL REQUESTED
-         SEATS ACTUALLY EXIST
-      ----------------------------------------------------- */
+        //  CHECK THAT ALL REQUESTED
+        //  SEATS ACTUALLY EXIST
 
       const invalidSeats =
         uniqueSeats.filter(
@@ -2125,9 +2020,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CHECK CURRENTLY BOOKED SEATS
-      ----------------------------------------------------- */
+        //  CHECK CURRENTLY BOOKED SEATS
 
       const existingBookings =
         await Booking.find({
@@ -2165,9 +2058,7 @@ app.post(
             )
         );
 
-      /* -----------------------------------------------------
-         REJECT ALREADY BOOKED SEATS
-      ----------------------------------------------------- */
+        //  REJECT ALREADY BOOKED SEATS */
 
       if (
         unavailableSeats.length > 0
@@ -2179,17 +2070,13 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CALCULATE TOTAL ON BACKEND
-      ----------------------------------------------------- */
+        //  CALCULATE TOTAL ON BACKEND
 
       const totalPrice =
         uniqueSeats.length *
         event.ticketPrice;
 
-      /* -----------------------------------------------------
-         CREATE BOOKING
-      ----------------------------------------------------- */
+        //  CREATE BOOKING
 
       const bookingReference =
         generateBookingReference();
@@ -2273,16 +2160,14 @@ app.post(
 );
 
 
-/* =========================================================
-   BOOKING — GET CUSTOMER HISTORY
-========================================================= */
+  //  BOOKING — GET CUSTOMER HISTORY
 
-/*
-  A customer can ONLY see their own bookings.
 
-  The customer ID comes from req.user,
-  not from the URL or request body.
-*/
+
+app.get(
+  "/api/bookings/my",
+  authenticateUser,
+)
 
 app.get(
   "/api/bookings/my",
@@ -2325,10 +2210,7 @@ app.get(
   }
 );
 
-
-/* =========================================================
-   BOOKING — GET SINGLE CUSTOMER BOOKING
-========================================================= */
+  //  BOOKING — GET SINGLE CUSTOMER BOOKING
 
 app.get(
   "/api/bookings/:id",
@@ -2367,9 +2249,7 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         CUSTOMER OWNERSHIP CHECK
-      ----------------------------------------------------- */
+        //  CUSTOMER OWNERSHIP CHECK
 
       if (
         booking.customerId.toString() !==
@@ -2395,9 +2275,8 @@ app.get(
 );
 
 
-/* =========================================================
-   BOOKING — CANCEL
-========================================================= */
+  //  BOOKING — CANCEL
+ 
 
 app.put(
   "/api/bookings/:id/cancel",
@@ -2428,9 +2307,7 @@ app.put(
         });
       }
 
-      /* -----------------------------------------------------
-         OWNERSHIP CHECK
-      ----------------------------------------------------- */
+        //  OWNERSHIP CHECK
 
       if (
         booking.customerId.toString() !==
@@ -2442,9 +2319,8 @@ app.put(
         });
       }
 
-      /* -----------------------------------------------------
-         ALREADY CANCELLED
-      ----------------------------------------------------- */
+        //  ALREADY CANCELLED
+       
 
       if (
         booking.status ===
@@ -2480,9 +2356,7 @@ app.put(
 );
 
 
-/* =========================================================
-   ADMIN — VIEW ALL BOOKINGS
-========================================================= */
+  //  ADMIN — VIEW ALL BOOKINGS
 
 app.get(
   "/api/bookings",
@@ -2527,9 +2401,7 @@ app.get(
 );
 
 
-/* =========================================================
-   VENUE MANAGER — VIEW EVENT BOOKINGS
-========================================================= */
+  //  VENUE MANAGER — VIEW EVENT BOOKINGS
 
 app.get(
   "/api/events/:id/bookings",
@@ -2575,9 +2447,7 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         VENUE MANAGER OWNERSHIP
-      ----------------------------------------------------- */
+        //  VENUE MANAGER OWNERSHIP
 
       if (
         req.user.role ===
@@ -2638,11 +2508,7 @@ app.get(
   }
 );
 
-
-/* =========================================================
-   PAYMENT — CREATE PAYMENT RECORD
-========================================================= */
-
+  // PAYMENT — CREATE PAYMENT RECORD
 
 
 app.post(
@@ -2685,9 +2551,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CHECK BOOKING OWNER
-      ----------------------------------------------------- */
+        //  CHECK BOOKING OWNER
 
       if (
         booking.customerId.toString() !==
@@ -2699,9 +2563,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CHECK BOOKING STATUS
-      ----------------------------------------------------- */
+        //  CHECK BOOKING STATUS
 
       if (
         booking.status ===
@@ -2713,9 +2575,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         CHECK EXISTING PAYMENT
-      ----------------------------------------------------- */
+        //  CHECK EXISTING PAYMENT
 
       const existingPayment =
         await Payment.findOne({
@@ -2734,9 +2594,7 @@ app.post(
         });
       }
 
-      /* -----------------------------------------------------
-         GENERATE PAYMENT REFERENCE
-      ----------------------------------------------------- */
+        //  GENERATE PAYMENT REFERENCE
 
       const paymentReference =
         `PAY-${Date.now()}-${crypto
@@ -2744,21 +2602,14 @@ app.post(
           .toString("hex")
           .toUpperCase()}`;
 
-      /* -----------------------------------------------------
-         CREATE PAYMENT
-      ----------------------------------------------------- */
+        //  CREATE PAYMENT
 
       const payment =
         await Payment.create({
           bookingId:
             booking._id,
 
-          /*
-            IMPORTANT:
-            We use the price stored on the
-            booking instead of trusting the
-            frontend.
-          */
+         
 
           amount:
             booking.totalPrice,
@@ -2789,9 +2640,7 @@ app.post(
 );
 
 
-/* =========================================================
-   PAYMENT — GET MY PAYMENTS
-========================================================= */
+  //  PAYMENT — GET MY PAYMENTS
 
 app.get(
   "/api/payments/my",
@@ -2896,10 +2745,6 @@ app.post(
 
       await payment.save();
 
-      /*
-        If payment succeeds, make sure
-        the booking is confirmed.
-      */
 
       if (
         status ===
@@ -2933,13 +2778,7 @@ app.post(
 );
 
 
-/* =========================================================
-   ADMIN — USER MANAGEMENT
-========================================================= */
-
-/*
-  Administrator can view all users.
-*/
+  //  ADMIN — USER MANAGEMENT
 
 app.get(
   "/api/admin/users",
@@ -2969,9 +2808,8 @@ app.get(
 );
 
 
-/* =========================================================
-   ADMIN — UPDATE USER ROLE
-========================================================= */
+  //  ADMIN — UPDATE USER ROLE
+ 
 
 app.put(
   "/api/admin/users/:id/role",
@@ -3025,6 +2863,8 @@ app.put(
 
       await user.save();
 
+  //  ADMIN — UPDATE USER ROLE
+
       res.json({
         message:
           "User role updated successfully",
@@ -3049,9 +2889,7 @@ app.put(
 );
 
 
-/* =========================================================
-   ADMIN — PLATFORM STATISTICS
-========================================================= */
+  //  ADMIN — PLATFORM STATISTICS
 
 app.get(
   "/api/admin/stats",
@@ -3132,9 +2970,7 @@ app.get(
 );
 
 
-/* =========================================================
-   VENUE MANAGER — VENUE PERFORMANCE
-========================================================= */
+  //  VENUE MANAGER — VENUE PERFORMANCE
 
 app.get(
   "/api/venues/:id/performance",
@@ -3168,9 +3004,7 @@ app.get(
         });
       }
 
-      /* -----------------------------------------------------
-         VENUE MANAGER OWNERSHIP
-      ----------------------------------------------------- */
+        //  VENUE MANAGER OWNERSHIP
 
       if (
         req.user.role ===
@@ -3257,13 +3091,8 @@ app.get(
 );
 
 
-/* =========================================================
-   USER PROFILE
-========================================================= */
+  //  USER PROFILE
 
-/*
-  Get the currently logged-in user's profile.
-*/
 
 app.get(
   "/api/profile",
@@ -3296,9 +3125,7 @@ app.get(
 );
 
 
-/* =========================================================
-   USER PROFILE — UPDATE
-========================================================= */
+  //  USER PROFILE — UPDATE
 
 app.put(
   "/api/profile",
@@ -3327,15 +3154,7 @@ app.put(
           name.trim();
       }
 
-      /*
-        IMPORTANT:
-
-        The user cannot change their own
-        role through this endpoint.
-
-        Only an Administrator can change
-        roles using the admin endpoint.
-      */
+     
 
       await req.user.save();
 
@@ -3363,9 +3182,7 @@ app.put(
 );
 
 
-/* =========================================================
-   API INFORMATION
-========================================================= */
+  //  API INFORMATION
 
 app.get(
   "/api",
@@ -3405,9 +3222,7 @@ app.get(
 );
 
 
-/* =========================================================
-   404 — UNKNOWN ROUTE
-========================================================= */
+  //  404 — UNKNOWN ROUTE
 
 app.use(
   (req, res) => {
@@ -3425,9 +3240,7 @@ app.use(
 );
 
 
-/* =========================================================
-   GLOBAL ERROR HANDLER
-========================================================= */
+  //  GLOBAL ERROR HANDLER
 
 app.use(
   (
@@ -3456,9 +3269,7 @@ app.use(
   }
 );
 
-/* =========================================================
-START SERVER
-========================================================= */
+//  SERVER
 
 async function startServer() {
   try {
