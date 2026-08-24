@@ -230,6 +230,17 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
+eventSchema.index(
+  {
+    venueId: 1,
+    date: 1,
+    startTime: 1,
+  },
+  {
+    unique: true,
+  }
+);
+
 const Event = mongoose.model("Event", eventSchema);
 
   //  BOOKING MODEL
@@ -1085,8 +1096,6 @@ app.post(
         ticketPrice,
       } = req.body;
 
-        //  REQUIRED FIELDS
-
       if (
         !title ||
         !venueId ||
@@ -1101,15 +1110,12 @@ app.post(
         });
       }
 
-        //  VALIDATE VENUE ID
-
       if (!mongoose.Types.ObjectId.isValid(venueId)) {
         return res.status(400).json({
           message: "Invalid venue ID",
         });
       }
 
-      
       const venue = await Venue.findById(venueId);
 
       if (!venue) {
@@ -1117,8 +1123,6 @@ app.post(
           message: "Venue not found",
         });
       }
-
-        //  VENUE MANAGER OWNERSHIP
 
       if (
         req.user.role === "Venue Manager" &&
@@ -1131,8 +1135,6 @@ app.post(
             "You can only create events for your own venues",
         });
       }
-
-        //  VALIDATE DATES
 
       if (!isValidDate(date)) {
         return res.status(400).json({
@@ -1158,8 +1160,6 @@ app.post(
         });
       }
 
-        //  VALIDATE PRICE
-
       const parsedPrice = Number(ticketPrice);
 
       if (
@@ -1172,7 +1172,18 @@ app.post(
         });
       }
 
-        //  CREATE EVENT
+      const conflictingEvent = await Event.findOne({
+        venueId: venueId,
+        date: eventDate,
+        startTime: startTime.trim(),
+      });
+
+      if (conflictingEvent) {
+        return res.status(409).json({
+          message:
+            "This venue is already booked for another event at this date and time",
+        });
+      }
 
       const event = await Event.create({
         title: title.trim(),
@@ -1210,7 +1221,6 @@ app.post(
     }
   }
 );
-
 
   //  EVENT — GET ALL
 
