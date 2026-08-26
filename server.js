@@ -116,16 +116,11 @@ const venueSchema = new mongoose.Schema(
       trim: true,
     },
 
-    address: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    city: {
-      type: String,
-      required: true,
-      trim: true,
+    address: { type: String, required: true, trim: true },
+    city: { type: String, required: true, trim: true },
+    location: {
+      lat: { type: Number, default: -26.2041 },
+      lng: { type: Number, default: 28.0473 }
     },
 
     capacity: {
@@ -157,9 +152,6 @@ const venueSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
-
-
-  // rows × seatsPerRow
 
 
 venueSchema.pre("validate", function () {
@@ -510,6 +502,23 @@ app.post("/api/users/register", async (req, res) => {
 });
 
 
+app.get("/api/users/:id", authenticateUser, async (req, res) => {
+  try {
+    const query = mongoose.Types.ObjectId.isValid(req.params.id)
+      ? { _id: req.params.id }
+      : { firebaseUID: req.params.id };
+
+    const user = await User.findOne(query).select("-__v");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to get user", error: error.message });
+  }
+});
 
 //  USER LOGIN
 
@@ -782,6 +791,25 @@ app.post(
         });
       }
 
+
+      const fullAddress = `${address}, ${city}`;
+      let venueLocation = { lat: -26.2041, lng: 28.0473 }; // Default fallback
+
+      try {
+        const geocodeRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json`, {
+          params: {
+            address: fullAddress,
+            key: process.env.GOOGLE_MAPS_API_KEY
+          }
+        })
+
+        if (geocodeRes.data.results && geocodeRes.data.results.length > 0) {
+          venueLocation = geocodeRes.data.results[0].geometry.location;
+        }
+      } catch (geoError) {
+        console.error("Geocoding failed during creation, using default coordinates:", geoError.message);
+      }
+
       const venue = await Venue.create({
         name,
         description,
@@ -791,6 +819,7 @@ app.post(
         seatsPerRow: parsedSeatsPerRow,
         capacity:
           parsedRows * parsedSeatsPerRow,
+        location: venueLocation,
         managerId:
           req.user.role === "Venue Manager"
             ? req.user._id
@@ -906,8 +935,6 @@ app.put(
         });
       }
 
-     
-
       if (
         req.user.role === "Venue Manager" &&
         venue.managerId &&
@@ -937,16 +964,46 @@ app.put(
         venue.description = description;
       }
 
+      let addressChanged = false;
+
       if (address !== undefined) {
         venue.address = address;
+        addressChanged = true;
       }
 
       if (city !== undefined) {
         venue.city = city;
+        addressChanged = true;
       }
+
+
+
+      if (addressChanged) {
+        const fullAddress = `${venue.address}, ${venue.city}`;
+        try {
+          const geocodeRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json`, {
+            params: {
+              address: fullAddress,
+              key: process.env.GOOGLE_MAPS_API_KEY
+            }
+          });
+
+          if (geocodeRes.data.results && geocodeRes.data.results.length > 0) {
+            venue.location = geocodeRes.data.results[0].geometry.location;
+          }
+        } catch (geoError) {
+          console.error("Geocoding failed during update, keeping previous coordinates:", geoError.message);
+        }
+      }
+
+
+
 
       if (rows !== undefined) {
         const parsedRows = Number(rows);
+
+
+
 
         if (
           !Number.isInteger(parsedRows) ||
@@ -961,6 +1018,9 @@ app.put(
 
         venue.rows = parsedRows;
       }
+
+
+
 
       if (seatsPerRow !== undefined) {
         const parsedSeats =
