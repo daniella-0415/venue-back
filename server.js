@@ -34,7 +34,7 @@ mongoose
   //  HELPER FUNCTIONS
 
 function generateBookingReference() {
-  return `VF-${Date.now()}-${crypto
+  return `VF${Date.now()}${crypto
     .randomBytes(3)
     .toString("hex")
     .toUpperCase()}`;
@@ -532,7 +532,7 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    // Find the user in MongoDB using their email
+
     const user = await User.findOne({
       email: email.toLowerCase(),
     }).select("-__v");
@@ -733,7 +733,7 @@ app.put(
 );
 
 
-  //  VENUE — CREATE
+  //  VENUE CREATE
 
 app.post(
   "/api/venues",
@@ -793,21 +793,25 @@ app.post(
 
 
       const fullAddress = `${address}, ${city}`;
-      let venueLocation = { lat: -26.2041, lng: 28.0473 }; // Default fallback
+      let venueLocation = { lat: -26.2041, lng: 28.0473 };
 
       try {
-        const geocodeRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json`, {
-          params: {
+        console.log("API KEY CHECK:", process.env.GOOGLE_MAPS_API_KEY);
+        const geocodeRes = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', 
+        { params: 
+          {
             address: fullAddress,
             key: process.env.GOOGLE_MAPS_API_KEY
           }
         })
 
+        console.log("GOOGLE RESPONSE DATA:", geocodeRes.data);
+
         if (geocodeRes.data.results && geocodeRes.data.results.length > 0) {
           venueLocation = geocodeRes.data.results[0].geometry.location;
         }
       } catch (geoError) {
-        console.error("Geocoding failed during creation, using default coordinates:", geoError.message);
+        console.error("Geocoding failed during creation:", geoError.response ? geoError.response.data : geoError.message);
       }
 
       const venue = await Venue.create({
@@ -839,7 +843,7 @@ app.post(
 );
 
 
-  //  VENUE  GET ALL
+  //  VENUE GET ALL
 
 app.get(
   "/api/venues",
@@ -1135,7 +1139,7 @@ app.delete(
   }
 );
 
-  //  EVENT  CREATE
+  //  EVENT: CREATE
 
 app.post(
   "/api/events",
@@ -1283,7 +1287,7 @@ app.post(
   }
 );
 
-  //  EVENT — GET ALL
+  //  EVENT: GET ALL
 
 app.get(
   "/api/events",
@@ -1315,7 +1319,7 @@ app.get(
 );
 
 
-  //  EVENT — GET ONE
+  //  EVENT: GET ONE
 
 app.get(
   "/api/events/:id",
@@ -1363,7 +1367,7 @@ app.get(
 );
 
 
-  //  EVENT  UPDATE
+  //  EVENT UPDATE
 
 app.put(
   "/api/events/:id",
@@ -1610,7 +1614,7 @@ app.put(
 );
 
 
-  //  EVENT — DELETE
+  //  EVENT : DELETE
 
 app.delete(
   "/api/events/:id",
@@ -2232,14 +2236,7 @@ app.post(
 );
 
 
-  //  BOOKING — GET CUSTOMER HISTORY
-
-
-
-app.get(
-  "/api/bookings/my",
-  authenticateUser,
-)
+  //  BOOKING : GET CUSTOMER HISTORY
 
 app.get(
   "/api/bookings/my",
@@ -2282,7 +2279,7 @@ app.get(
   }
 );
 
-  //  BOOKING — GET SINGLE CUSTOMER BOOKING
+  //  BOOKING: GET SINGLE CUSTOMER BOOKING
 
 app.get(
   "/api/bookings/:id",
@@ -2347,7 +2344,7 @@ app.get(
 );
 
 
-  //  BOOKING — CANCEL
+  //  BOOKING CANCEL
  
 
 app.put(
@@ -2428,7 +2425,7 @@ app.put(
 );
 
 
-  //  ADMIN — VIEW ALL BOOKINGS
+  //  ADMIN VIEW ALL BOOKINGS
 
 app.get(
   "/api/bookings",
@@ -2473,7 +2470,7 @@ app.get(
 );
 
 
-  //  VENUE MANAGER — VIEW EVENT BOOKINGS
+  //  VENUE MANAGER VIEW EVENT BOOKINGS
 
 app.get(
   "/api/events/:id/bookings",
@@ -2622,8 +2619,7 @@ app.post(
           email: req.user.email,
           amount: Math.round(booking.totalPrice * 100),
           reference: paymentReference,
-          callback_url: `${req.protocol}://${req.get("host")}/api/payments/verify?reference=${paymentReference}`
-        },
+          callback_url: "http://localhost:5173/payment-result?reference=" + paymentReference        },
         {
           headers: {
             Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
@@ -2648,19 +2644,24 @@ app.post(
   }
 );
 
+// PAYMENT VERIFICATION API
 app.get(
   "/api/payments/verify",
+  authenticateUser,
   async (req, res) => {
     try {
-      const { reference } = req.query;
+      let { reference } = req.query;
+      if (Array.isArray(reference)) {
+        reference = reference[0];
+      }
 
       if (!reference) {
-        return res.status(400).json({ message: "Payment reference is required" });
+        return res.status(400).json({ message: "No payment reference found." });
       }
 
       const payment = await Payment.findOne({ reference });
       if (!payment) {
-        return res.status(404).json({ message: "Payment record not found" });
+        return res.status(404).json({ message: "Payment not found." });
       }
 
       const paystackResponse = await axios.get(
@@ -2675,38 +2676,41 @@ app.get(
       const transactionData = paystackResponse.data.data;
 
       if (transactionData.status === "success") {
-        payment.status = "Successful";
-        await payment.save();
+        if (payment.status !== "Successful") {
+          payment.status = "Successful";
+          await payment.save();
 
-        await Booking.findByIdAndUpdate(payment.bookingId, {
-          status: "Confirmed",
-        });
-
-        return res.json({
-          message: "Payment verified successfully and booking confirmed",
-          payment,
-        });
+          await Booking.findByIdAndUpdate(payment.bookingId, {
+            status: "Confirmed",
+          });
+        }
       } else {
         payment.status = "Failed";
         await payment.save();
-
-        return res.status(400).json({
-          message: "Payment verification failed",
-          status: transactionData.status,
-        });
       }
+
+      const booking = await Booking.findById(payment.bookingId)
+        .populate("eventId", "title description date startTime ticketPrice image")
+        .populate("venueId", "name address city");
+
+      return res.json({
+        message: "Payment verification complete",
+        payment,
+        booking,
+        email: req.user.email
+      });
+
     } catch (error) {
       console.error("Paystack verification error:", error.response?.data || error.message);
-      res.status(500).json({
-        message: "Failed to verify payment",
-        error: error.response?.data || error.message,
+      return res.status(500).json({
+        message: "Payment verification failed.",
+        error: error.response?.data || error.message
       });
     }
   }
 );
 
-
-  //  ADMIN — USER MANAGEMENT
+  //  ADMIN USER MANAGEMENT
 
 app.get(
   "/api/admin/users",
@@ -2736,7 +2740,7 @@ app.get(
 );
 
 
-  //  ADMIN — UPDATE USER ROLE
+  //  ADMIN: UPDATE USER ROLE
  
 
 app.put(
@@ -2791,7 +2795,7 @@ app.put(
 
       await user.save();
 
-  //  ADMIN — UPDATE USER ROLE
+  //  ADMIN UPDATE USER ROLE
 
       res.json({
         message:
@@ -2817,7 +2821,7 @@ app.put(
 );
 
 
-  //  ADMIN — PLATFORM STATISTICS
+  //  ADMIN PLATFORM STATISTICS
 
 app.get(
   "/api/admin/stats",
@@ -2898,7 +2902,7 @@ app.get(
 );
 
 
-  //  VENUE MANAGER — VENUE PERFORMANCE
+  //  MANAGE VENUE PERFORMANCE
 
 app.get(
   "/api/venues/:id/performance",
@@ -3053,7 +3057,7 @@ app.get(
 );
 
 
-  //  USER PROFILE — UPDATE
+  //  USER PROFILE UPDATE
 
 app.put(
   "/api/profile",
@@ -3150,7 +3154,7 @@ app.get(
 );
 
 
-  //  404 — UNKNOWN ROUTE
+  //  404 UNKNOWN ROUTE
 
 app.use(
   (req, res) => {
@@ -3182,10 +3186,6 @@ app.use(
       error
     );
 
-    /*
-      Don't expose unnecessary
-      internal information in production.
-    */
 
     res.status(
       error.status || 500
