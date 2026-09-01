@@ -4,13 +4,13 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const crypto = require("crypto");
+const axios = require("axios");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-  //  CONFIGURATION
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -30,7 +30,6 @@ mongoose
     process.exit(1);
   });
 
-  //  HELPER FUNCTIONS
 
 function generateBookingReference() {
   return `VF-${Date.now()}-${crypto
@@ -158,7 +157,7 @@ const venueSchema = new mongoose.Schema(
 );
 
 
-  // rows × seatsPerRow
+  // rows seatsPerRow
 
 
 venueSchema.pre("validate", function () {
@@ -227,6 +226,17 @@ const eventSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+eventSchema.index(
+  {
+    venueId: 1,
+    date: 1,
+    startTime: 1,
+  },
+  {
+    unique: true,
   }
 );
 
@@ -1085,8 +1095,6 @@ app.post(
         ticketPrice,
       } = req.body;
 
-        //  REQUIRED FIELDS
-
       if (
         !title ||
         !venueId ||
@@ -1100,8 +1108,6 @@ app.post(
             "title, venueId, date, startTime, salesClosingDate and ticketPrice are required",
         });
       }
-
-        //  VALIDATE VENUE ID
 
       if (!mongoose.Types.ObjectId.isValid(venueId)) {
         return res.status(400).json({
@@ -1117,8 +1123,6 @@ app.post(
         });
       }
 
-        //  VENUE MANAGER OWNERSHIP
-
       if (
         req.user.role === "Venue Manager" &&
         venue.managerId &&
@@ -1130,8 +1134,6 @@ app.post(
             "You can only create events for your own venues",
         });
       }
-
-        //  VALIDATE DATES
 
       if (!isValidDate(date)) {
         return res.status(400).json({
@@ -1157,8 +1159,6 @@ app.post(
         });
       }
 
-        //  VALIDATE PRICE
-
       const parsedPrice = Number(ticketPrice);
 
       if (
@@ -1171,7 +1171,18 @@ app.post(
         });
       }
 
-        //  CREATE EVENT
+      const conflictingEvent = await Event.findOne({
+        venueId: venueId,
+        date: eventDate,
+        startTime: startTime.trim(),
+      });
+
+      if (conflictingEvent) {
+        return res.status(409).json({
+          message:
+            "This venue is already booked for another event at this date and time",
+        });
+      }
 
       const event = await Event.create({
         title: title.trim(),
@@ -1209,7 +1220,6 @@ app.post(
     }
   }
 );
-
 
   //  EVENT — GET ALL
 
@@ -1999,8 +2009,6 @@ app.post(
       const validSeatSet =
         new Set(validSeats);
 
-        //  CHECK THAT ALL REQUESTED
-        //  SEATS ACTUALLY EXIST
 
       const invalidSeats =
         uniqueSeats.filter(
@@ -2160,15 +2168,7 @@ app.post(
 );
 
 
-  //  BOOKING — GET CUSTOMER HISTORY
-
-
-
-app.get(
-  "/api/bookings/my",
-  authenticateUser,
-)
-
+  
 app.get(
   "/api/bookings/my",
   authenticateUser,
@@ -2204,6 +2204,80 @@ app.get(
       res.status(500).json({
         message:
           "Failed to get booking history",
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+app.get(
+  "/api/manager/bookings",
+  authenticateUser,
+  authorizeRoles("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      let eventIds;
+
+      if (req.user.role === "Administrator") {
+        const events = await Event.find().select("_id");
+        eventIds = events.map((event) => event._id);
+      } else {
+        
+
+        const venues = await Venue.find({
+          managerId: req.user._id,
+        }).select("_id");
+
+        const venueIds = venues.map(
+          (venue) => venue._id
+        );
+
+        const events = await Event.find({
+          venueId: {
+            $in: venueIds,
+          },
+        }).select("_id");
+
+        eventIds = events.map(
+          (event) => event._id
+        );
+      }
+
+      const bookings = await Booking.find({
+        eventId: {
+          $in: eventIds,
+        },
+      })
+        .populate(
+          "customerId",
+          "name email"
+        )
+        .populate(
+          "eventId",
+          "title date startTime ticketPrice"
+        )
+        .populate(
+          "venueId",
+          "name address city"
+        )
+        .sort({
+          createdAt: -1,
+        });
+
+      res.json({
+        count: bookings.length,
+        bookings,
+      });
+    } catch (error) {
+      console.error(
+        "Manager bookings error:",
+        error
+      );
+
+      res.status(500).json({
+        message:
+          "Failed to get manager bookings",
         error: error.message,
       });
     }
@@ -2508,270 +2582,126 @@ app.get(
   }
 );
 
-  // PAYMENT — CREATE PAYMENT RECORD
-
+  // PAYMENTS APIS
 
 app.post(
-  "/api/payments",
+  "/api/payments/initialize",
   authenticateUser,
   authorizeRoles("Customer"),
   async (req, res) => {
     try {
-      const {
-        bookingId,
-      } = req.body;
+      const { bookingId } = req.body;
 
       if (!bookingId) {
-        return res.status(400).json({
-          message:
-            "bookingId is required",
-        });
+        return res.status(400).json({ message: "bookingId is required" });
       }
 
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          bookingId
-        )
-      ) {
-        return res.status(400).json({
-          message:
-            "Invalid booking ID",
-        });
-      }
-
-      const booking =
-        await Booking.findById(
-          bookingId
-        );
-
+      const booking = await Booking.findById(bookingId).populate("eventId");
       if (!booking) {
-        return res.status(404).json({
-          message:
-            "Booking not found",
-        });
+        return res.status(404).json({ message: "Booking not found" });
       }
 
-        //  CHECK BOOKING OWNER
-
-      if (
-        booking.customerId.toString() !==
-        req.user._id.toString()
-      ) {
-        return res.status(403).json({
-          message:
-            "You can only pay for your own bookings",
-        });
+      if (booking.customerId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: "You can only pay for your own bookings" });
       }
 
-        //  CHECK BOOKING STATUS
-
-      if (
-        booking.status ===
-        "Cancelled"
-      ) {
-        return res.status(400).json({
-          message:
-            "Cannot pay for a cancelled booking",
-        });
+      if (booking.status === "Cancelled") {
+        return res.status(400).json({ message: "Cannot pay for a cancelled booking" });
       }
 
-        //  CHECK EXISTING PAYMENT
+      const paymentReference = `PAY${Date.now()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 
-      const existingPayment =
-        await Payment.findOne({
-          bookingId:
-            booking._id,
-          status:
-            "Successful",
-        });
+      const payment = await Payment.create({
+        bookingId: booking._id,
+        amount: booking.totalPrice,
+        reference: paymentReference,
+        status: "Pending",
+      });
 
-      if (existingPayment) {
-        return res.status(409).json({
-          message:
-            "This booking has already been paid",
-          payment:
-            existingPayment,
-        });
-      }
-
-        //  GENERATE PAYMENT REFERENCE
-
-      const paymentReference =
-        `PAY-${Date.now()}-${crypto
-          .randomBytes(3)
-          .toString("hex")
-          .toUpperCase()}`;
-
-        //  CREATE PAYMENT
-
-      const payment =
-        await Payment.create({
-          bookingId:
-            booking._id,
-
-         
-
-          amount:
-            booking.totalPrice,
-
-          reference:
-            paymentReference,
-
-          status:
-            "Pending",
-        });
+      const paystackResponse = await axios.post(
+        "https://api.paystack.co/transaction/initialize",
+        {
+          email: req.user.email,
+          amount: Math.round(booking.totalPrice * 100),
+          reference: paymentReference,
+          callback_url: `${req.protocol}://${req.get("host")}/api/payments/verify?reference=${paymentReference}`
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       res.status(201).json({
-        message:
-          "Payment record created",
-
+        message: "Payment initialized successfully",
+        authorization_url: paystackResponse.data.data.authorization_url,
+        reference: paymentReference,
         payment,
       });
     } catch (error) {
-      console.error(error);
-
+      console.error("Paystack initialization error:", error.response?.data || error.message);
       res.status(500).json({
-        message:
-          "Failed to create payment",
-        error: error.message,
+        message: "Failed to initialize payment with Paystack",
+        error: error.response?.data || error.message,
       });
     }
   }
 );
-
-
-  //  PAYMENT — GET MY PAYMENTS
 
 app.get(
-  "/api/payments/my",
-  authenticateUser,
-  authorizeRoles("Customer"),
+  "/api/payments/verify",
   async (req, res) => {
     try {
-      const bookings =
-        await Booking.find({
-          customerId:
-            req.user._id,
-        }).select("_id");
+      const { reference } = req.query;
 
-      const bookingIds =
-        bookings.map(
-          (booking) =>
-            booking._id
-        );
-
-      const payments =
-        await Payment.find({
-          bookingId: {
-            $in: bookingIds,
-          },
-        })
-          .populate(
-            "bookingId",
-            "bookingReference totalPrice status seats"
-          )
-          .sort({
-            createdAt: -1,
-          });
-
-      res.json({
-        count:
-          payments.length,
-
-        payments,
-      });
-    } catch (error) {
-      console.error(error);
-
-      res.status(500).json({
-        message:
-          "Failed to get payments",
-        error: error.message,
-      });
-    }
-  }
-);
-
-
-
-
-app.post(
-  "/api/payments/callback",
-  async (req, res) => {
-    try {
-      const {
-        reference,
-        status,
-      } = req.body;
-
-      if (!reference || !status) {
-        return res.status(400).json({
-          message:
-            "reference and status are required",
-        });
+      if (!reference) {
+        return res.status(400).json({ message: "Payment reference is required" });
       }
 
-      const payment =
-        await Payment.findOne({
-          reference,
-        });
-
+      const payment = await Payment.findOne({ reference });
       if (!payment) {
-        return res.status(404).json({
-          message:
-            "Payment not found",
-        });
+        return res.status(404).json({ message: "Payment record not found" });
       }
 
-      const allowedStatuses = [
-        "Pending",
-        "Successful",
-        "Failed",
-      ];
+      const paystackResponse = await axios.get(
+        `https://api.paystack.co/transaction/verify/${reference}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          },
+        }
+      );
 
-      if (
-        !allowedStatuses.includes(
-          status
-        )
-      ) {
+      const transactionData = paystackResponse.data.data;
+
+      if (transactionData.status === "success") {
+        payment.status = "Successful";
+        await payment.save();
+
+        await Booking.findByIdAndUpdate(payment.bookingId, {
+          status: "Confirmed",
+        });
+
+        return res.json({
+          message: "Payment verified successfully and booking confirmed",
+          payment,
+        });
+      } else {
+        payment.status = "Failed";
+        await payment.save();
+
         return res.status(400).json({
-          message:
-            "Invalid payment status",
+          message: "Payment verification failed",
+          status: transactionData.status,
         });
       }
-
-      payment.status =
-        status;
-
-      await payment.save();
-
-
-      if (
-        status ===
-        "Successful"
-      ) {
-        await Booking.findByIdAndUpdate(
-          payment.bookingId,
-          {
-            status:
-              "Confirmed",
-          }
-        );
-      }
-
-      res.json({
-        message:
-          "Payment callback processed",
-
-        payment,
-      });
     } catch (error) {
-      console.error(error);
-
+      console.error("Paystack verification error:", error.response?.data || error.message);
       res.status(500).json({
-        message:
-          "Failed to process payment callback",
-        error: error.message,
+        message: "Failed to verify payment",
+        error: error.response?.data || error.message,
       });
     }
   }
@@ -3254,10 +3184,6 @@ app.use(
       error
     );
 
-    /*
-      Don't expose unnecessary
-      internal information in production.
-    */
 
     res.status(
       error.status || 500
