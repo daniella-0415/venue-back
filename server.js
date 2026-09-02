@@ -11,7 +11,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-  //  CONFIGURATION
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -31,7 +30,6 @@ mongoose
     process.exit(1);
   });
 
-  //  HELPER FUNCTIONS
 
 function generateBookingReference() {
   return `VF-${Date.now()}-${crypto
@@ -128,6 +126,16 @@ const venueSchema = new mongoose.Schema(
       trim: true,
     },
 
+    latitude: {
+      type: Number,
+      default: null,
+    },
+
+    longitude: {
+      type: Number,
+      default: null,
+    },
+
     capacity: {
       type: Number,
       required: true,
@@ -159,7 +167,7 @@ const venueSchema = new mongoose.Schema(
 );
 
 
-  // rows × seatsPerRow
+  // rows seatsPerRow
 
 
 venueSchema.pre("validate", function () {
@@ -735,15 +743,16 @@ app.post(
   ),
   async (req, res) => {
     try {
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
-
+     const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+} = req.body;
       if (
         !name ||
         !address ||
@@ -782,20 +791,33 @@ app.post(
         });
       }
 
-      const venue = await Venue.create({
-        name,
-        description,
-        address,
-        city,
-        rows: parsedRows,
-        seatsPerRow: parsedSeatsPerRow,
-        capacity:
-          parsedRows * parsedSeatsPerRow,
-        managerId:
-          req.user.role === "Venue Manager"
-            ? req.user._id
-            : null,
-      });
+  const venue = await Venue.create({
+  name,
+  description,
+  address,
+  city,
+
+  latitude:
+    latitude !== undefined && latitude !== ""
+      ? Number(latitude)
+      : null,
+
+  longitude:
+    longitude !== undefined && longitude !== ""
+      ? Number(longitude)
+      : null,
+
+  rows: parsedRows,
+  seatsPerRow: parsedSeatsPerRow,
+
+  capacity:
+    parsedRows * parsedSeatsPerRow,
+
+  managerId:
+    req.user.role === "Venue Manager"
+      ? req.user._id
+      : null,
+});
 
       res.status(201).json(venue);
     } catch (error) {
@@ -920,14 +942,26 @@ app.put(
         });
       }
 
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
+   const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+}  = req.body;
+
+if (latitude !== undefined) {
+  venue.latitude =
+    latitude === "" ? null : Number(latitude);
+}
+
+if (longitude !== undefined) {
+  venue.longitude =
+    longitude === "" ? null : Number(longitude);
+}
 
       if (name !== undefined) {
         venue.name = name;
@@ -1200,10 +1234,10 @@ app.post(
 
       const populatedEvent =
         await Event.findById(event._id)
-          .populate(
-            "venueId",
-            "name address city capacity rows seatsPerRow"
-          )
+.populate(
+  "venueId",
+  "name address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
@@ -1231,9 +1265,9 @@ app.get(
     try {
       const events = await Event.find()
         .populate(
-          "venueId",
-          "name description address city capacity rows seatsPerRow"
-        )
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
         .populate(
           "createdBy",
           "name email role"
@@ -1275,10 +1309,10 @@ app.get(
         await Event.findById(
           req.params.id
         )
-          .populate(
-            "venueId",
-            "name description address city capacity rows seatsPerRow"
-          )
+         .populate(
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
@@ -2011,8 +2045,6 @@ app.post(
       const validSeatSet =
         new Set(validSeats);
 
-        //  CHECK THAT ALL REQUESTED
-        //  SEATS ACTUALLY EXIST
 
       const invalidSeats =
         uniqueSeats.filter(
@@ -2172,15 +2204,7 @@ app.post(
 );
 
 
-  //  BOOKING — GET CUSTOMER HISTORY
-
-
-
-app.get(
-  "/api/bookings/my",
-  authenticateUser,
-)
-
+  
 app.get(
   "/api/bookings/my",
   authenticateUser,
@@ -2216,6 +2240,80 @@ app.get(
       res.status(500).json({
         message:
           "Failed to get booking history",
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+app.get(
+  "/api/manager/bookings",
+  authenticateUser,
+  authorizeRoles("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      let eventIds;
+
+      if (req.user.role === "Administrator") {
+        const events = await Event.find().select("_id");
+        eventIds = events.map((event) => event._id);
+      } else {
+        
+
+        const venues = await Venue.find({
+          managerId: req.user._id,
+        }).select("_id");
+
+        const venueIds = venues.map(
+          (venue) => venue._id
+        );
+
+        const events = await Event.find({
+          venueId: {
+            $in: venueIds,
+          },
+        }).select("_id");
+
+        eventIds = events.map(
+          (event) => event._id
+        );
+      }
+
+      const bookings = await Booking.find({
+        eventId: {
+          $in: eventIds,
+        },
+      })
+        .populate(
+          "customerId",
+          "name email"
+        )
+        .populate(
+          "eventId",
+          "title date startTime ticketPrice"
+        )
+        .populate(
+          "venueId",
+          "name address city"
+        )
+        .sort({
+          createdAt: -1,
+        });
+
+      res.json({
+        count: bookings.length,
+        bookings,
+      });
+    } catch (error) {
+      console.error(
+        "Manager bookings error:",
+        error
+      );
+
+      res.status(500).json({
+        message:
+          "Failed to get manager bookings",
         error: error.message,
       });
     }
@@ -3122,10 +3220,6 @@ app.use(
       error
     );
 
-    /*
-      Don't expose unnecessary
-      internal information in production.
-    */
 
     res.status(
       error.status || 500
