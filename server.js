@@ -126,6 +126,16 @@ const venueSchema = new mongoose.Schema(
       trim: true,
     },
 
+    latitude: {
+      type: Number,
+      default: null,
+    },
+
+    longitude: {
+      type: Number,
+      default: null,
+    },
+
     capacity: {
       type: Number,
       required: true,
@@ -733,15 +743,16 @@ app.post(
   ),
   async (req, res) => {
     try {
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
-
+     const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+} = req.body;
       if (
         !name ||
         !address ||
@@ -780,20 +791,33 @@ app.post(
         });
       }
 
-      const venue = await Venue.create({
-        name,
-        description,
-        address,
-        city,
-        rows: parsedRows,
-        seatsPerRow: parsedSeatsPerRow,
-        capacity:
-          parsedRows * parsedSeatsPerRow,
-        managerId:
-          req.user.role === "Venue Manager"
-            ? req.user._id
-            : null,
-      });
+  const venue = await Venue.create({
+  name,
+  description,
+  address,
+  city,
+
+  latitude:
+    latitude !== undefined && latitude !== ""
+      ? Number(latitude)
+      : null,
+
+  longitude:
+    longitude !== undefined && longitude !== ""
+      ? Number(longitude)
+      : null,
+
+  rows: parsedRows,
+  seatsPerRow: parsedSeatsPerRow,
+
+  capacity:
+    parsedRows * parsedSeatsPerRow,
+
+  managerId:
+    req.user.role === "Venue Manager"
+      ? req.user._id
+      : null,
+});
 
       res.status(201).json(venue);
     } catch (error) {
@@ -918,14 +942,26 @@ app.put(
         });
       }
 
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
+   const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+}  = req.body;
+
+if (latitude !== undefined) {
+  venue.latitude =
+    latitude === "" ? null : Number(latitude);
+}
+
+if (longitude !== undefined) {
+  venue.longitude =
+    longitude === "" ? null : Number(longitude);
+}
 
       if (name !== undefined) {
         venue.name = name;
@@ -1198,10 +1234,10 @@ app.post(
 
       const populatedEvent =
         await Event.findById(event._id)
-          .populate(
-            "venueId",
-            "name address city capacity rows seatsPerRow"
-          )
+.populate(
+  "venueId",
+  "name address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
@@ -1229,9 +1265,9 @@ app.get(
     try {
       const events = await Event.find()
         .populate(
-          "venueId",
-          "name description address city capacity rows seatsPerRow"
-        )
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
         .populate(
           "createdBy",
           "name email role"
@@ -1273,10 +1309,10 @@ app.get(
         await Event.findById(
           req.params.id
         )
-          .populate(
-            "venueId",
-            "name description address city capacity rows seatsPerRow"
-          )
+         .populate(
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
