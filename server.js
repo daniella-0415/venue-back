@@ -11,7 +11,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-  //  CONFIGURATION
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -31,7 +30,6 @@ mongoose
     process.exit(1);
   });
 
-  //  HELPER FUNCTIONS
 
 function generateBookingReference() {
   return `VF${Date.now()}${crypto
@@ -123,6 +121,16 @@ const venueSchema = new mongoose.Schema(
       lng: { type: Number, default: 28.0473 }
     },
 
+    latitude: {
+      type: Number,
+      default: null,
+    },
+
+    longitude: {
+      type: Number,
+      default: null,
+    },
+
     capacity: {
       type: Number,
       required: true,
@@ -152,7 +160,6 @@ const venueSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
-
 
 venueSchema.pre("validate", function () {
   if (this.rows && this.seatsPerRow) {
@@ -744,15 +751,16 @@ app.post(
   ),
   async (req, res) => {
     try {
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
-
+     const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+} = req.body;
       if (
         !name ||
         !address ||
@@ -791,44 +799,33 @@ app.post(
         });
       }
 
+  const venue = await Venue.create({
+  name,
+  description,
+  address,
+  city,
 
-      const fullAddress = `${address}, ${city}`;
-      let venueLocation = { lat: -26.2041, lng: 28.0473 };
+  latitude:
+    latitude !== undefined && latitude !== ""
+      ? Number(latitude)
+      : null,
 
-      try {
-        console.log("API KEY CHECK:", process.env.GOOGLE_MAPS_API_KEY);
-        const geocodeRes = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', 
-        { params: 
-          {
-            address: fullAddress,
-            key: process.env.GOOGLE_MAPS_API_KEY
-          }
-        })
+  longitude:
+    longitude !== undefined && longitude !== ""
+      ? Number(longitude)
+      : null,
 
-        console.log("GOOGLE RESPONSE DATA:", geocodeRes.data);
+  rows: parsedRows,
+  seatsPerRow: parsedSeatsPerRow,
 
-        if (geocodeRes.data.results && geocodeRes.data.results.length > 0) {
-          venueLocation = geocodeRes.data.results[0].geometry.location;
-        }
-      } catch (geoError) {
-        console.error("Geocoding failed during creation:", geoError.response ? geoError.response.data : geoError.message);
-      }
+  capacity:
+    parsedRows * parsedSeatsPerRow,
 
-      const venue = await Venue.create({
-        name,
-        description,
-        address,
-        city,
-        rows: parsedRows,
-        seatsPerRow: parsedSeatsPerRow,
-        capacity:
-          parsedRows * parsedSeatsPerRow,
-        location: venueLocation,
-        managerId:
-          req.user.role === "Venue Manager"
-            ? req.user._id
-            : null,
-      });
+  managerId:
+    req.user.role === "Venue Manager"
+      ? req.user._id
+      : null,
+});
 
       res.status(201).json(venue);
     } catch (error) {
@@ -951,14 +948,26 @@ app.put(
         });
       }
 
-      const {
-        name,
-        description,
-        address,
-        city,
-        rows,
-        seatsPerRow,
-      } = req.body;
+   const {
+  name,
+  description,
+  address,
+  city,
+  latitude,
+  longitude,
+  rows,
+  seatsPerRow,
+}  = req.body;
+
+if (latitude !== undefined) {
+  venue.latitude =
+    latitude === "" ? null : Number(latitude);
+}
+
+if (longitude !== undefined) {
+  venue.longitude =
+    longitude === "" ? null : Number(longitude);
+}
 
       if (name !== undefined) {
         venue.name = name;
@@ -1264,10 +1273,10 @@ app.post(
 
       const populatedEvent =
         await Event.findById(event._id)
-          .populate(
-            "venueId",
-            "name address city capacity rows seatsPerRow"
-          )
+.populate(
+  "venueId",
+  "name address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
@@ -1295,9 +1304,9 @@ app.get(
     try {
       const events = await Event.find()
         .populate(
-          "venueId",
-          "name description address city capacity rows seatsPerRow"
-        )
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
         .populate(
           "createdBy",
           "name email role"
@@ -1339,10 +1348,10 @@ app.get(
         await Event.findById(
           req.params.id
         )
-          .populate(
-            "venueId",
-            "name description address city capacity rows seatsPerRow"
-          )
+         .populate(
+  "venueId",
+  "name description address city latitude longitude capacity rows seatsPerRow"
+)
           .populate(
             "createdBy",
             "name email role"
@@ -2075,8 +2084,6 @@ app.post(
       const validSeatSet =
         new Set(validSeats);
 
-        //  CHECK THAT ALL REQUESTED
-        //  SEATS ACTUALLY EXIST
 
       const invalidSeats =
         uniqueSeats.filter(
@@ -2234,10 +2241,7 @@ app.post(
     }
   }
 );
-
-
-  //  BOOKING : GET CUSTOMER HISTORY
-
+  
 app.get(
   "/api/bookings/my",
   authenticateUser,
@@ -2279,7 +2283,80 @@ app.get(
   }
 );
 
-  //  BOOKING: GET SINGLE CUSTOMER BOOKING
+app.get(
+  "/api/manager/bookings",
+  authenticateUser,
+  authorizeRoles("Venue Manager", "Administrator"),
+  async (req, res) => {
+    try {
+      let eventIds;
+
+      if (req.user.role === "Administrator") {
+        const events = await Event.find().select("_id");
+        eventIds = events.map((event) => event._id);
+      } else {
+        
+
+        const venues = await Venue.find({
+          managerId: req.user._id,
+        }).select("_id");
+
+        const venueIds = venues.map(
+          (venue) => venue._id
+        );
+
+        const events = await Event.find({
+          venueId: {
+            $in: venueIds,
+          },
+        }).select("_id");
+
+        eventIds = events.map(
+          (event) => event._id
+        );
+      }
+
+      const bookings = await Booking.find({
+        eventId: {
+          $in: eventIds,
+        },
+      })
+        .populate(
+          "customerId",
+          "name email"
+        )
+        .populate(
+          "eventId",
+          "title date startTime ticketPrice"
+        )
+        .populate(
+          "venueId",
+          "name address city"
+        )
+        .sort({
+          createdAt: -1,
+        });
+
+      res.json({
+        count: bookings.length,
+        bookings,
+      });
+    } catch (error) {
+      console.error(
+        "Manager bookings error:",
+        error
+      );
+
+      res.status(500).json({
+        message:
+          "Failed to get manager bookings",
+        error: error.message,
+      });
+    }
+  }
+);
+
+  //  BOOKING — GET SINGLE CUSTOMER BOOKING
 
 app.get(
   "/api/bookings/:id",
