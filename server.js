@@ -509,7 +509,7 @@ app.post("/api/users/register", async (req, res) => {
 });
 
 
-app.get("/api/users/:id", authenticateUser, async (req, res) => {
+app.get("/api/users/:id", async (req, res) => {
   try {
     const query = mongoose.Types.ObjectId.isValid(req.params.id)
       ? { _id: req.params.id }
